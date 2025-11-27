@@ -135,3 +135,7 @@ Here is a concise bullet‑point synthesis of the described SETUP (kleptographic
 * Compute **q₁ = n / p₁** and **q₂ = n / p₂**; the division that yields an integer reveals the true **p** and **q**.
 * Recompute **d** from (p, q, e).
 * Attacker now fully recovers the victim’s RSA private key.
+
+## Improvements
+
+Currently the program uses ProbablyPrime() to check if a given n is prime. ProbablyPrime performs n Miller-Rabin tests to check whether x is prime. If it returns true, x is prime with probability 1 - 1/4^n. If it returns false, x is not prime. As such, there's a non-zero probability that the backdoor generation fails (Q can't be solved). Just rerun the tool if that's the case. 
