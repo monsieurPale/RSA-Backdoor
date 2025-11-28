@@ -38,9 +38,9 @@ func solveForQandR(c *big.Int, RND *big.Int, p *big.Int, bitsize int) (*big.Int,
 }
 
 // --- GENERATOR --- //
-// This function creates the backdoored RSA key pair
+// This function creates the backdoored RSA key pair using PK(N,E)
 
-func GENERATOR(pubKey *rsa.PublicKey, privKey *rsa.PrivateKey, bitsize int) (*big.Int, *big.Int, *big.Int, *big.Int, *big.Int) {
+func GENERATOR(pubKey *rsa.PublicKey, bitsize int) (*big.Int, *big.Int, *big.Int, *big.Int, *big.Int) {
 
 	fmt.Println("[*] Generating SETUP RSA key pair...")
 	fmt.Printf("[*] This may take a while...\n")
@@ -136,38 +136,6 @@ func loadPublicKey(filename string) (*rsa.PublicKey, error) {
 	return rsaPub, nil
 }
 
-// Load private key from .pem file
-func loadPrivateKey(filename string) (*rsa.PrivateKey, error) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	block, _ := pem.Decode(data)
-	if block == nil {
-		return nil, fmt.Errorf("[!] Failed to parse PEM block")
-	}
-
-	// OpenSSL allows multiple padding formats
-	// Try PKCS#1
-	priv, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-	if err == nil {
-		return priv, nil
-	}
-	// Try PKCS#8
-	privKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("[!] Failed to parse private key: %v", err)
-	}
-
-	rsaPriv, ok := privKey.(*rsa.PrivateKey)
-	if !ok {
-		return nil, fmt.Errorf("[!] Not an RSA private key")
-	}
-
-	return rsaPriv, nil
-}
-
 // Export SETUP Keys, these are backdoored and returned to user
 func saveKeys(outputDir string, n, e, d, p, q *big.Int, bitsize int) error {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
@@ -227,13 +195,12 @@ func saveKeys(outputDir string, n, e, d, p, q *big.Int, bitsize int) error {
 func main() {
 
 	attackerPubKey := flag.String("pk", "", "Path to attacker's PK(N,E) (.pem)")
-	attackerPrivKey := flag.String("sk", "", "Path to attacker's SK(D) (.pem)")
 	outputDir := flag.String("o", "out", "Output directory for backdoored pair")
 	bitsize := flag.Int("bits", 512, "Bit size for z. Size increase computation time.")
 
 	flag.Parse()
-	if *attackerPubKey == "" || *attackerPrivKey == "" {
-		fmt.Println("\n[*] Usage: generator -pk <attacker_pub.pem> -sk <attacker_priv.pem> -o <output_dir>\n")
+	if *attackerPubKey == "" {
+		fmt.Println("\n[*] Usage: generator -pk <attacker_pub.pem> -o <output_dir>\n")
 		flag.PrintDefaults()
 		fmt.Println("\n[*] Generate PK(N,E), SK(D) with :\n")
 		fmt.Println("    openssl genrsa -out attacker_priv.pem 2048")
@@ -242,22 +209,17 @@ func main() {
 	}
 
 	// Load PK, SK
-	fmt.Println("[*] Loading attacker's keys...")
+	fmt.Println("[*] Loading attacker's key...")
 	pubKey, err := loadPublicKey(*attackerPubKey)
 	if err != nil {
 		log.Fatalf("[!] Failed to load public key: %v", err)
-	}
-
-	privKey, err := loadPrivateKey(*attackerPrivKey)
-	if err != nil {
-		log.Fatalf("[!] Failed to load private key: %v", err)
 	}
 
 	fmt.Printf("[+] Attacker's key loaded (N bit length: %d)\n", pubKey.N.BitLen())
 	fmt.Printf("[*] Using bitsize: %d\n\n", *bitsize)
 
 	// Run SETUP algorithm
-	n, e, d, p, q := GENERATOR(pubKey, privKey, *bitsize)
+	n, e, d, p, q := GENERATOR(pubKey, *bitsize)
 	if err := saveKeys(*outputDir, n, e, d, p, q, *bitsize); err != nil {
 		log.Fatalf("[!] Failed to save keys: %v", err)
 	}
@@ -266,5 +228,5 @@ func main() {
 	fmt.Println("\n[i] To test encryption run:")
 	fmt.Printf("  echo -n \"hello world\" | openssl pkeyutl -encrypt -inkey %s/victim_pub.pem -pubin -out %s/cipher.bin\n", *outputDir, *outputDir)
 	fmt.Println("\n[i] To test SETUP backdoor run:")
-	fmt.Printf("  ./decryptor -pk %s/victim_pub.pem -sk %s -c %s/cipher.bin\n", *outputDir, *attackerPrivKey, *outputDir)
+	fmt.Printf("  ./decryptor -pk %s/victim_pub.pem -sk <attacker_priv.pem> -c %s/cipher.bin\n", *outputDir, *outputDir)
 }
